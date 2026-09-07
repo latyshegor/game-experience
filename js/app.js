@@ -10,8 +10,9 @@
   const shuffle = arr => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   const fmtDate = ts => new Date(ts).toLocaleString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  const tokenImg = id => `assets/tokens/${pad2(id)}.webp`;
-  const cardImg = (kind, n) => `${D.DECKS[kind].dir}/${pad2(n)}.webp`;
+  const ASSET = p => (window.ASSETS && window.ASSETS[p]) || p; // в автономной сборке картинки встроены в файл
+  const tokenImg = id => ASSET(`assets/tokens/${pad2(id)}.webp`);
+  const cardImg = (kind, n) => ASSET(`${D.DECKS[kind].dir}/${pad2(n)}.webp`);
   const DIR_TEXT = { right: 'направо', left: 'налево' };
 
   /* ---------------- хранилище ---------------- */
@@ -21,7 +22,7 @@
     return { games: [], activeId: null };
   }
   function save() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); } catch (e) { console.warn('save failed', e); } }
-  const ui = { view: 'home', selected: null, sheetId: null, flash: null, rules: false, toast: null };
+  const ui = { view: 'home', selected: null, sheetId: null, flash: null, rules: false, toast: null, confirmDelete: null, textModal: null };
   const activeGame = () => store.games.find(g => g.id === store.activeId) || null;
   const gameById = id => store.games.find(g => g.id === id) || null;
 
@@ -246,7 +247,7 @@
       else if (g.phase === 'finished' || g.phase === 'exited') { ui.view = 'sheet'; ui.sheetId = g.id; html = renderSheet(g); }
       else html = renderGame(g);
     }
-    app.innerHTML = html + renderModal(g) + (ui.rules ? renderRules() : '') + (ui.toast ? `<div class="toast">${esc(ui.toast)}</div>` : '');
+    app.innerHTML = html + renderModal(g) + (ui.rules ? renderRules() : '') + (ui.textModal ? renderTextModal() : '') + (ui.toast ? `<div class="toast">${esc(ui.toast)}</div>` : '');
     document.body.dataset.view = ui.view;
     const ta = app.querySelector('textarea[autofocus]');
     if (ta && window.innerWidth > 700) ta.focus();
@@ -273,7 +274,7 @@
     const unfinished = g && g.phase !== 'finished' && g.phase !== 'exited';
     return renderTopbar(g) + `<main class="home">
       <div class="hero">
-        <div class="hero-eye"><img src="assets/tokens/01.webp" alt=""></div>
+        <div class="hero-eye"><img src="${tokenImg(1)}" alt=""></div>
         <h1>${esc(D.TITLE)}</h1>
         <p class="tagline">Игра-путь к осознанию</p>
         <p class="lead">Всё, что прожито в нашем сознании, для нас как будто уже было. Сформулируй запрос, войди на поле сознания и пройди путь к своей цели — чтобы потом реализовать его в жизни.</p>
@@ -347,7 +348,7 @@
       if (last) cur = `<polygon class="cur" points="${c.pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ')}"/>`;
     });
     return `<svg class="board" viewBox="0 0 ${G.IMG_W} ${G.IMG_H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Игровое поле">
-      <image href="assets/board.webp" width="${G.IMG_W}" height="${G.IMG_H}"/>
+      <image href="${ASSET('assets/board.webp')}" width="${G.IMG_W}" height="${G.IMG_H}"/>
       <g class="toks">${toks}</g>${cur}<g class="cells">${cells}</g></svg>`;
   }
 
@@ -458,6 +459,10 @@
     return `<div class="modal-back"><div class="modal">${inner}</div></div>`;
   }
 
+  function renderTextModal() {
+    const t = ui.textModal;
+    return `<div class="modal-back"><div class="modal"><h2>${esc(t.name)}</h2><p class="note">В этой версии файл не скачивается — скопируй текст и сохрани его в заметки.</p><textarea id="text-out" rows="12" readonly>${esc(t.content)}</textarea><div class="actions"><button class="btn primary" data-act="text-copy">Скопировать</button><button class="btn ghost" data-act="text-close">Закрыть</button></div></div></div>`;
+  }
   function renderRules() {
     return `<div class="modal-back" data-act="rules-close"><div class="modal rules" onclick="event.stopPropagation()">
       <h2>Как играть</h2>
@@ -512,7 +517,7 @@
       <section class="panel-card">
         <h2>Мой дневник</h2>
         <p class="note">Игры сохраняются в этом браузере на этом устройстве. Чтобы перенести их на другое устройство, скачай резервную копию и загрузи её там.</p>
-        ${games.length ? `<div class="list">${games.map(g => `<div class="row"><div class="row-main"><b>${esc(g.request.text || 'Запрос не сформулирован')}</b><span>${esc(fmtDate(g.updatedAt))} · ${esc(statusText(g))}${g.element ? ' · ' + esc(D.ELEMENTS[g.element].name) : ''} · шагов: ${g.journal.filter(j => j.t === 'card').length}</span></div><div class="row-actions"><button class="btn small" data-act="open" data-id="${g.id}">${g.phase === 'finished' || g.phase === 'exited' ? 'Открыть' : 'Продолжить'}</button><button class="btn small ghost" data-act="sheet" data-id="${g.id}">Маршрут</button><button class="btn small ghost danger" data-act="delete" data-id="${g.id}">Удалить</button></div></div>`).join('')}</div>` : '<p>Пока нет ни одной игры.</p>'}
+        ${games.length ? `<div class="list">${games.map(g => `<div class="row"><div class="row-main"><b>${esc(g.request.text || 'Запрос не сформулирован')}</b><span>${esc(fmtDate(g.updatedAt))} · ${esc(statusText(g))}${g.element ? ' · ' + esc(D.ELEMENTS[g.element].name) : ''} · шагов: ${g.journal.filter(j => j.t === 'card').length}</span></div><div class="row-actions">${ui.confirmDelete === g.id ? `<span class="note">Удалить эту игру?</span><button class="btn small danger" data-act="delete-yes" data-id="${g.id}">Да, удалить</button><button class="btn small ghost" data-act="delete-no">Нет</button>` : `<button class="btn small" data-act="open" data-id="${g.id}">${g.phase === 'finished' || g.phase === 'exited' ? 'Открыть' : 'Продолжить'}</button><button class="btn small ghost" data-act="sheet" data-id="${g.id}">Маршрут</button><button class="btn small ghost danger" data-act="delete" data-id="${g.id}">Удалить</button>`}</div></div>`).join('')}</div>` : '<p>Пока нет ни одной игры.</p>'}
         <div class="actions"><button class="btn primary" data-act="new">Начать новую игру</button><button class="btn ghost" data-act="export">Скачать резервную копию</button><label class="btn ghost file">Загрузить копию<input type="file" id="import" accept="application/json,.json"></label></div>
       </section></main>`;
   }
@@ -542,6 +547,7 @@
     return L.join('\n');
   }
   function downloadFile(name, content, type) {
+    if (window.ASSETS) { ui.textModal = { name, content }; render(); return; }
     const blob = new Blob([content], { type });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
     document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
@@ -577,7 +583,11 @@
       case 'continue': if (g) ui.view = 'game'; else startNew(); break;
       case 'open': openGame(btn.dataset.id); break;
       case 'sheet': ui.view = 'sheet'; ui.sheetId = btn.dataset.id; break;
-      case 'delete': { if (confirm('Удалить эту игру из дневника?')) { store.games = store.games.filter(x => x.id !== btn.dataset.id); if (store.activeId === btn.dataset.id) store.activeId = null; save(); } break; }
+      case 'delete': ui.confirmDelete = btn.dataset.id; break;
+      case 'delete-no': ui.confirmDelete = null; break;
+      case 'delete-yes': { store.games = store.games.filter(x => x.id !== btn.dataset.id); if (store.activeId === btn.dataset.id) store.activeId = null; ui.confirmDelete = null; save(); break; }
+      case 'text-close': ui.textModal = null; break;
+      case 'text-copy': { const ta = $('#text-out'); if (ta) { ta.select(); try { navigator.clipboard.writeText(ta.value); } catch (err) { document.execCommand('copy'); } toast('Скопировано.'); } return; }
       case 'export': downloadFile(`experience-diary-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(store, null, 2), 'application/json'); return;
       case 'print': window.print(); return;
       case 'download': { const gg = gameById(btn.dataset.id); if (gg) downloadFile(`experience-route-${new Date(gg.createdAt).toISOString().slice(0, 10)}.txt`, sheetText(gg), 'text/plain;charset=utf-8'); return; }

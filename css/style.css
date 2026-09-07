@@ -110,6 +110,8 @@ main.narrow { max-width: 760px; }
 @keyframes pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 .panel { display: flex; flex-direction: column; gap: .9em; }
 .panel > div { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 1em 1.1em; }
+.panel > .actions { margin-top: 0; }
+.panel > .actions:empty { display: none; }
 .req-box p { margin: 0; font-family: var(--font-head); font-size: 1.2rem; color: var(--gold-2); }
 .el-box { border-left: 4px solid var(--el, var(--gold)) !important; }
 .el-box b { color: var(--el, var(--gold)); }
