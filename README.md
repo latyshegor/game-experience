@@ -18,7 +18,7 @@
 - `js/data.js` — карты, колоды, тексты вопросов и подсказок
 - `js/app.js` — логика игры и интерфейс
 - `assets/` — поле, карты пути, колоды препятствий, ресурсов и подсказок (сжатые для веба)
-- `.github/workflows/deploy-pages.yml` — публикация на GitHub Pages
+- `.nojekyll` — чтобы GitHub Pages публиковал файлы как есть
 
 ## Запуск локально
 
@@ -29,3 +29,7 @@ python3 -m http.server 8080
 ```
 
 и откройте http://localhost:8080/
+
+## Публикация на GitHub Pages
+
+В настройках репозитория: **Settings → Pages → Build and deployment → Source: Deploy from a branch**, выбрать ветку с игрой и папку `/ (root)`, нажать **Save**. Через одну-две минуты игра доступна по адресу `https://<логин>.github.io/game-elena/`.
