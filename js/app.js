@@ -14,6 +14,19 @@
   const tokenImg = id => ASSET(`assets/tokens/${pad2(id)}.webp`);
   const cardImg = (kind, n) => ASSET(`${D.DECKS[kind].dir}/${pad2(n)}.webp`);
   const DIR_TEXT = { right: 'направо', left: 'налево' };
+  const ICONS = {
+    eye: '<path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path d="M12 2v2m0 16v2M4 4l2 2m12 12 2 2M20 4l-2 2M6 18l-2 2"/>',
+    book: '<path d="M12 5v16M3 3c4 0 6 0 9 2 3-2 5-2 9-2v16c-4 0-6 0-9 2-3-2-5-2-9-2Z"/>',
+    arrow: '<path d="M4 12h16m-6-6 6 6-6 6"/>',
+    star: '<path d="m12 2 2.5 7.5L22 12l-7.5 2.5L12 22l-2.5-7.5L2 12l7.5-2.5Z"/>',
+    air: '<path d="M3 8h12c5 0 5-6 1-6M2 12h17c4 0 4 6 0 6M4 16h7c4 0 4 6 0 6"/>',
+    water: '<path d="M3 6c4-5 6 5 10 0s6 0 8 0M3 12c4-5 6 5 10 0s6 0 8 0M3 18c4-5 6 5 10 0s6 0 8 0"/>',
+    fire: '<path d="M12 2c2 6-5 7-5 12a5 5 0 0 0 10 0c0-3-2-4-1-7 6 5 7 14-4 15C1 21 3 12 7 8c-1 4 1 5 2 5 0-4 4-5 3-11Z"/>',
+    earth: '<path d="m12 2 9 5v10l-9 5-9-5V7Z"/><path d="m3 7 9 5 9-5m-9 5v10"/>',
+    lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4m-4 4v3"/>'
+  };
+  const icon = (name, cls = '') => `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ICONS.star}</svg>`;
+  const footer = () => `<footer class="site-footer"><span>EXPERIENCE <i>·</i> Пространство твоих открытий</span><span>${icon('lock')} Твой путь сохраняется в этом браузере</span></footer>`;
 
   /* ---------------- хранилище ---------------- */
   let store = loadStore();
@@ -237,6 +250,10 @@
   const app = $('#app');
   function render() {
     const g = activeGame();
+    const screen = `${ui.view}:${g ? g.id + ':' + g.phase + ':' + g.step : ''}`;
+    // Keep unfinished answers when a dialog or toast redraws the same screen.
+    const drafts = document.body.dataset.screen === screen
+      ? new Map([...app.querySelectorAll('textarea')].map(field => [field.id, field.value])) : new Map();
     let html = '';
     if (ui.view === 'home') html = renderHome();
     else if (ui.view === 'diary') html = renderDiary();
@@ -247,10 +264,22 @@
       else if (g.phase === 'finished' || g.phase === 'exited') { ui.view = 'sheet'; ui.sheetId = g.id; html = renderSheet(g); }
       else html = renderGame(g);
     }
-    app.innerHTML = html + renderModal(g) + (ui.rules ? renderRules() : '') + (ui.textModal ? renderTextModal() : '') + (ui.toast ? `<div class="toast">${esc(ui.toast)}</div>` : '');
+    app.innerHTML = html + renderModal(g) + (ui.rules ? renderRules() : '') + (ui.textModal ? renderTextModal() : '') + (ui.toast ? `<div class="toast" role="status">${esc(ui.toast)}</div>` : '');
     document.body.dataset.view = ui.view;
-    const ta = app.querySelector('textarea[autofocus]');
-    if (ta && window.innerWidth > 700) ta.focus();
+    if (document.body.dataset.screen !== screen) window.scrollTo({ top: 0, behavior: 'instant' });
+    document.body.dataset.screen = screen;
+    const modals = app.querySelectorAll('.modal-back');
+    const dialog = modals.length ? modals[modals.length - 1] : null;
+    for (const child of app.children) child.inert = !!dialog && child !== dialog && !child.classList.contains('toast');
+    for (const field of app.querySelectorAll('textarea')) {
+      if (drafts.has(field.id)) field.value = drafts.get(field.id);
+      if (!field.closest('label') && !app.querySelector(`label[for="${field.id}"]`)) {
+        const section = field.closest('.modal, .request');
+        field.setAttribute('aria-label', section?.querySelector('.prompt, h2')?.textContent || 'Твоя запись');
+      }
+    }
+    const target = dialog?.querySelector('textarea[autofocus], button') || app.querySelector('textarea[autofocus]');
+    if (target && (dialog || window.innerWidth > 700)) target.focus({ preventScroll: true });
   }
   let toastTimer = null;
   function toast(msg) {
@@ -261,11 +290,11 @@
 
   function renderTopbar(g) {
     return `<header class="topbar">
-      <button class="brand" data-act="home"><span class="brand-eye"></span>${esc(D.TITLE)}</button>
-      <nav>
+      <button class="brand" data-act="home" aria-label="Experience, на главную">${icon('eye')}<span>${esc(D.TITLE)}<small>ИГРА-ПУТЬ К ОСОЗНАНИЮ</small></span></button>
+      <nav aria-label="Главная навигация">
         ${g && (g.phase === 'play' || g.phase === 'entry') && ui.view !== 'game' ? '<button class="btn small" data-act="continue">Продолжить игру</button>' : ''}
-        <button class="btn small ghost" data-act="diary">Дневник</button>
-        <button class="btn small ghost" data-act="rules">Как играть</button>
+        <button class="btn small ghost nav-diary ${ui.view === 'diary' ? 'active' : ''}" data-act="diary" aria-label="Мой дневник">${icon('book')}<span>Мой дневник</span>${store.games.length ? `<span class="nav-count">${store.games.length}</span>` : ''}</button>
+        <button class="btn small ghost nav-rules" data-act="rules"><span class="help-icon" aria-hidden="true">?</span>Как играть</button>
       </nav></header>`;
   }
 
@@ -273,36 +302,46 @@
     const g = activeGame();
     const unfinished = g && g.phase !== 'finished' && g.phase !== 'exited';
     return renderTopbar(g) + `<main class="home">
-      <div class="hero">
-        <div class="hero-eye"><img src="${tokenImg(1)}" alt=""></div>
-        <h1>${esc(D.TITLE)}</h1>
-        <p class="tagline">Игра-путь к осознанию</p>
-        <p class="lead">Всё, что прожито в нашем сознании, для нас как будто уже было. Сформулируй запрос, войди на поле сознания и пройди путь к своей цели — чтобы потом реализовать его в жизни.</p>
-        <div class="actions column">
-          ${unfinished ? `<button class="btn primary big" data-act="continue">Продолжить игру<small>${esc(g.request.text || 'запрос ещё не сформулирован')}</small></button>` : ''}
-          <button class="btn ${unfinished ? '' : 'primary'} big" data-act="new">Начать новую игру</button>
-          <button class="btn ghost" data-act="diary">Мой дневник${store.games.length ? ` (${store.games.length})` : ''}</button>
-          <button class="btn ghost" data-act="rules">Как играть</button>
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow"><span></span> ТРАНСФОРМАЦИОННАЯ ИГРА</p>
+          <h1>Путь к себе<br>начинается <em>здесь.</em></h1>
+          <p class="lead">Остановись. Услышь своё желание.<br>Пройди через образы, чувства и открытия<br class="desktop-br"> к тому, что по-настоящему важно.</p>
+          <div class="hero-actions">
+            <button class="btn primary big" data-act="${unfinished ? 'continue' : 'new'}">${unfinished ? 'Продолжить мой путь' : 'Начать свой путь'}${icon('arrow')}</button>
+            <button class="btn ghost" data-act="${unfinished ? 'new' : 'rules'}">${unfinished ? 'Новая игра' : 'Познакомиться с игрой'}<span aria-hidden="true">↗</span></button>
+          </div>
+          ${unfinished && g.request.text ? `<p class="resume-note">Твой запрос: «${esc(g.request.text)}»</p>` : '<p class="hero-note">В своём темпе. С вниманием к себе.</p>'}
+          <div class="element-strip" aria-label="Четыре стихии">${['air','water','fire','earth'].map(k => `<span>${icon(k)}${esc(D.ELEMENTS[k].name)}</span>`).join('')}</div>
         </div>
-      </div>
-      <section class="how">
-        <div class="how-item"><b>1. Запрос</b><span>Игра поможет сформулировать желание в созидательном ключе и уточнить его.</span></div>
-        <div class="how-item"><b>2. Вход</b><span>Вытаскивай карты, пока не откроется стихия — она задаёт характер пути.</span></div>
-        <div class="how-item"><b>3. Путь</b><span>Прокладывай дорожку карт по стрелкам к Оку: препятствия, ресурсы, подсказки, осознания.</span></div>
-        <div class="how-item"><b>4. Маршрут</b><span>В конце — напутствие и маршрутный лист со всеми картами и твоими записями.</span></div>
+        <div class="hero-art" aria-hidden="true">
+          <img class="hero-illustration" src="${ASSET('assets/hero-experience.jpg')}" alt="" width="1254" height="1254" fetchpriority="high">
+          <span class="art-caption art-caption-top">ЧЕТЫРЕ СТИХИИ · ОДИН ТВОЙ ПУТЬ</span>
+          <div class="art-note">${icon('star')}<span>Ответы ближе,<br><em>чем кажется.</em></span></div>
+        </div>
       </section>
-    </main>`;
+      <section class="journey" aria-labelledby="journey-title">
+        <div class="section-heading"><p class="eyebrow">КАК РОЖДАЁТСЯ ТВОЙ ПУТЬ</p><h2 id="journey-title">Четыре шага навстречу себе</h2><span class="section-flower" aria-hidden="true">✳</span></div>
+        <div class="how">
+          <div class="how-item"><span class="step-num">01</span><div><h3>Сформулируй запрос</h3><p>Чего ты хочешь на самом деле? Дай своему желанию слова.</p></div></div>
+          <div class="how-item"><span class="step-num">02</span><div><h3>Открой свою стихию</h3><p>Вытащи карту и узнай, какие качества поддержат тебя в пути.</p></div></div>
+          <div class="how-item"><span class="step-num">03</span><div><h3>Следуй за открытиями</h3><p>Исследуй образы, находи ресурсы и прокладывай путь к Оку.</p></div></div>
+          <div class="how-item"><span class="step-num">04</span><div><h3>Сохрани главное</h3><p>Твои карты и осознания останутся в личном дневнике.</p></div></div>
+        </div>
+      </section>
+    </main>${footer()}`;
   }
 
   function renderRequest(g) {
     const r = g.request;
     let body = '';
-    const progress = (k) => `<div class="steps-dots">${['Запрос', 'Уточнение', 'Подтверждение'].map((s, i) => `<span class="${i === k ? 'on' : i < k ? 'done' : ''}">${s}</span>`).join('')}</div>`;
+    const progress = (k) => `<div class="steps-dots" aria-label="Этапы подготовки">${['Запрос', 'Уточнение', 'Подтверждение'].map((s, i) => `<span class="${i === k ? 'on' : i < k ? 'done' : ''}" ${i === k ? 'aria-current="step"' : ''}><i>${i < k ? '✓' : '0' + (i + 1)}</i>${s}</span>`).join('')}</div>`;
     if (g.step === 'ask') {
       body = progress(0) + `<h2>Что ты сегодня хочешь?</h2>
-        <p class="lead">Сформулируй желание как <b>получение</b> чего-то, а не как избавление от чего-то. Например: «Хочу решить вопрос с жильём», «Хочу достичь таких-то результатов в бизнесе», «Хочу выйти замуж», «Хочу наладить отношения с близкими».</p>
-        <textarea id="req" rows="4" autofocus placeholder="Я хочу…">${esc(r.text)}</textarea>
-        <div class="actions"><button class="btn primary" data-act="req-next">Дальше</button></div>`;
+        <p class="lead">Прислушайся к себе. Сформулируй желание через то, что хочешь <b>получить</b> и привнести в свою жизнь.</p>
+        <label class="lbl-small" for="req">МОЁ ЖЕЛАНИЕ</label><textarea id="req" rows="4" autofocus placeholder="Я хочу…">${esc(r.text)}</textarea>
+        <p class="field-hint">Например: «Хочу найти дело, которое меня вдохновляет».</p>
+        <div class="actions"><button class="btn primary" data-act="req-next">Продолжить ${icon('arrow')}</button><span class="note">Здесь нет правильных ответов. Только твои.</span></div>`;
     } else if (g.step === 'neg') {
       body = progress(0) + `<h2>Давай переформулируем</h2>
         <p class="lead">В твоей формулировке звучит отрицание или избавление: «${esc(r.text)}». Игра работает с желанием <b>получить</b> что-то. Подумай: что ты хочешь получить вместо этого? Как будет выглядеть твоя жизнь, когда это случится?</p>
@@ -322,7 +361,7 @@
         <dl class="qa">${D.REQUEST_QUESTIONS.map((q, i) => `<dt>${esc(q)}</dt><dd>${nl2br(r.answers[i] || '—')}</dd>`).join('')}</dl>
         <div class="actions"><button class="btn primary" data-act="confirm-yes">Да, это то, что я хочу — войти в игру</button><button class="btn ghost" data-act="confirm-no">Хочу переформулировать</button></div>`;
     }
-    return renderTopbar(g) + `<main class="narrow"><section class="panel-card request">${body}</section></main>`;
+    return renderTopbar(g) + `<main class="request-view"><aside class="request-aside"><p class="eyebrow">НАЧАЛО ПУТИ</p><div class="request-symbol">${icon('eye')}</div><h2>Всё начинается<br>с <em>твоего желания.</em></h2><p>Позволь себе немного тишины.<br>Это время только для тебя.</p><div class="aside-line"></div><span class="note">${icon('lock')} Ответы сохраняются в этом браузере</span></aside><section class="panel-card request">${body}</section></main>${footer()}`;
   }
 
   function highlightMap(g) {
@@ -347,19 +386,31 @@
       toks += `<image class="tok${last ? ' last' : ''}" href="${tokenImg(p.token)}" x="${(c.cx - s / 2).toFixed(1)}" y="${(c.cy - s / 2).toFixed(1)}" width="${s.toFixed(1)}" height="${s.toFixed(1)}" transform="rotate(${p.rot.toFixed(1)} ${c.cx.toFixed(1)} ${c.cy.toFixed(1)})"/>`;
       if (last) cur = `<polygon class="cur" points="${c.pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ')}"/>`;
     });
-    return `<svg class="board" viewBox="0 0 ${G.IMG_W} ${G.IMG_H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Игровое поле">
-      <image href="${ASSET('assets/board.webp')}" width="${G.IMG_W}" height="${G.IMG_H}"/>
+    const corners = Object.values(G.CORNERS).map(c => c.v);
+    const outline = corners.map(([i,j]) => `${G.CX + (i + j / 2) * G.A},${G.CY + j * G.H}`).join(' ');
+    const grid = G.cells.map(c => `<polygon points="${c.pts.map(p => p.join(',')).join(' ')}" fill="${isEye(c.id) ? '#345148' : c.up ? '#1b342e' : '#172e28'}" stroke="#aa966449" stroke-width="2"/><path d="${c.pts.map(p => `M${c.cx},${c.cy}L${p[0]},${p[1]}`).join('')}" fill="none" stroke="#a5916019" stroke-width="1.5"/>`).join('');
+    const markers = Object.entries(G.CORNERS).map(([key, {v}]) => {
+      const x = G.CX + (v[0] + v[1] / 2) * G.A * .86, y = G.CY + v[1] * G.H * .86;
+      const color = ({air:'#c4d1bf',water:'#85b8b1',fire:'#d39a76',earth:'#c5b680'})[key] || '#bca475';
+      return `<g transform="translate(${x} ${y})" color="${color}"><circle r="77" fill="#11251f" stroke="currentColor" stroke-width="2"/><circle r="67" fill="none" stroke="currentColor" stroke-opacity=".25" stroke-width="1"/><svg x="-34" y="-34" width="68" height="68" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round">${ICONS[key] || '<circle cx="12" cy="12" r="8"/><path d="M7 12h10m-4-4 4 4-4 4"/>'}</svg></g>`;
+    }).join('');
+    return `<svg class="board" viewBox="0 0 ${G.IMG_W} ${G.IMG_H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Игровое поле, четыре стихии и Око в центре">
+      <polygon points="${outline}" fill="#132821" stroke="#c4ab70" stroke-width="14" stroke-linejoin="round"/>
+      <g>${grid}</g><polygon points="${outline}" fill="none" stroke="#c4ab7099" stroke-width="3"/>
+      ${markers}<g transform="translate(${G.CX} ${G.CY})" color="#d7c18d"><circle r="153" fill="#10261f" stroke="currentColor" stroke-width="2"/><circle r="139" fill="none" stroke="currentColor" stroke-opacity=".35" stroke-width="1"/>
+      <path d="M-108 0Q0-105 108 0Q0 105-108 0Z" fill="#263e30" stroke="currentColor" stroke-width="3"/><circle r="41" fill="#c4ab70"/><circle r="25" fill="#12261f"/><circle cx="10" cy="-12" r="8" fill="#f0e4c2"/>
+      <path d="M0-113v21m0 184v21m-85-192 14 14m142 142 14 14M85-79 71-65M-71 65l-14 14" stroke="currentColor" stroke-width="2"/></g>
       <g class="toks">${toks}</g>${cur}<g class="cells">${cells}</g></svg>`;
   }
 
   function renderHand(g) {
-    if (!g.hand.length) return '<p class="note">Резерв пуст.</p>';
+    if (!g.hand.length) return `<div class="hand-empty">${icon('star')}<p>Здесь появятся твои карты<span>Возьми первую и доверься пути.</span></p></div>`;
     return `<div class="hand">${g.hand.map(t => {
       const tok = D.TOKENS[t];
       const chk = g.phase === 'play' && !g.pending ? canPlay(g, t) : { ok: false };
       const cls = ['hand-card']; if (chk.ok) cls.push('ok'); if (ui.selected === t) cls.push('sel'); if (ui.flash === t) cls.push('flash');
       const dir = tok.exit === 'free' ? 'выбор' : DIR_TEXT[tok.exit];
-      return `<button class="${cls.join(' ')}" data-act="select" data-token="${t}" title="${esc(tok.name)}"><img src="${tokenImg(t)}" alt=""><span class="hc-name">${esc(tok.name)}</span><span class="hc-dir">${dir}</span></button>`;
+      return `<button class="${cls.join(' ')}" data-act="select" data-token="${t}" title="${esc(tok.name)}" aria-pressed="${ui.selected === t}"><img src="${tokenImg(t)}" alt=""><span class="hc-name">${esc(tok.name)}</span><span class="hc-dir">${tok.exit === 'right' ? '↗ ' : tok.exit === 'left' ? '↖ ' : '↔ '}${dir}</span></button>`;
     }).join('')}</div>`;
   }
 
@@ -397,15 +448,15 @@
     }
     const steps = g.journal.filter(j => j.t === 'card').length;
     return renderTopbar(g) + `<main class="game">
-      <div class="board-wrap">${renderBoard(g)}</div>
+      <div class="game-heading"><div><p class="eyebrow">${g.phase === 'entry' ? 'ЗНАКОМСТВО СО СТИХИЕЙ' : 'ПРОСТРАНСТВО ТВОИХ ОТКРЫТИЙ'}</p><h1>${g.phase === 'entry' ? 'Пусть путь откроется' : 'Твой путь к осознанию'}</h1></div><span class="session-status"><i></i> Сохраняется в дневнике</span></div>
+      <div class="board-wrap"><div class="board-heading"><span>ПОЛЕ СОЗНАНИЯ</span><span>ШАГ <b>${pad2(steps)}</b></span></div>${renderBoard(g)}<div class="board-legend"><span><i></i> ${g.pending && g.pending.type === 'direction' ? 'Выбери подсвеченное направление' : g.phase === 'entry' ? 'Четыре стихии. Твой уникальный путь.' : 'Подсвеченная клетка ждёт твою карту'}</span><span>${icon('eye')} Цель пути</span></div></div>
       <aside class="panel">
         <div class="req-box"><span class="lbl-small">Запрос</span><p>${esc(g.request.text)}</p></div>
-        ${el ? `<div class="el-box" style="--el:${el.color}"><span class="lbl-small">Стихия</span><b>${esc(el.name)}</b> — ${esc(el.short)}</div>` : ''}
-        <div class="status">${status}</div>
+        ${el ? `<div class="el-box" style="--el:${el.color}">${icon(g.element)}<div><span class="lbl-small">Твоя стихия</span><b>${esc(el.name)}</b> <span class="note">· ${esc(el.short)}</span></div></div>` : ''}
+        <div class="status">${status}${actions ? `<div class="actions">${actions}</div>` : ''}</div>
         <div class="hand-box"><span class="lbl-small">Резерв карт${g.hand.length ? ` (${g.hand.length})` : ''}</span>${renderHand(g)}</div>
-        <div class="actions">${actions}</div>
-        <div class="journal-mini"><span class="lbl-small">Маршрут</span><p>Шагов пути: ${steps}</p><button class="btn small ghost" data-act="sheet" data-id="${g.id}">Открыть маршрутный лист</button></div>
-      </aside></main>`;
+        <div class="journal-mini">${icon('book')}<div><span class="lbl-small">Твои открытия</span><p>Шагов пути: ${steps}</p></div><button class="btn small ghost" data-act="sheet" data-id="${g.id}" aria-label="Открыть маршрутный лист">${icon('arrow')}</button></div>
+      </aside></main>${footer()}`;
   }
 
   function cardBlock(rec) {
@@ -456,15 +507,15 @@
         <textarea id="note" rows="5" autofocus placeholder="Запиши своё осознание…"></textarea>
         <div class="actions"><button class="btn primary" data-act="finish-done">Завершить игру</button></div>`;
     } else return '';
-    return `<div class="modal-back"><div class="modal">${inner}</div></div>`;
+    return `<div class="modal-back"><section class="modal" role="dialog" aria-modal="true" aria-label="Карточка пути"><p class="eyebrow">${icon('star')} МОМЕНТ ДЛЯ СЕБЯ</p>${inner}</section></div>`;
   }
 
   function renderTextModal() {
     const t = ui.textModal;
-    return `<div class="modal-back"><div class="modal"><h2>${esc(t.name)}</h2><p class="note">В этой версии файл не скачивается — скопируй текст и сохрани его в заметки.</p><textarea id="text-out" rows="12" readonly>${esc(t.content)}</textarea><div class="actions"><button class="btn primary" data-act="text-copy">Скопировать</button><button class="btn ghost" data-act="text-close">Закрыть</button></div></div></div>`;
+    return `<div class="modal-back"><div class="modal" role="dialog" aria-modal="true" aria-label="Экспорт записей"><h2>${esc(t.name)}</h2><p class="note">В этой версии файл не скачивается — скопируй текст и сохрани его в заметки.</p><textarea id="text-out" rows="12" readonly>${esc(t.content)}</textarea><div class="actions"><button class="btn primary" data-act="text-copy">Скопировать</button><button class="btn ghost" data-act="text-close">Закрыть</button></div></div></div>`;
   }
   function renderRules() {
-    return `<div class="modal-back" data-act="rules-close"><div class="modal rules" onclick="event.stopPropagation()">
+    return `<div class="modal-back" data-act="rules-close"><div class="modal rules" role="dialog" aria-modal="true" aria-label="Как играть" onclick="event.stopPropagation()"><p class="eyebrow">ПУТЕВОДИТЕЛЬ</p><button class="modal-close" data-act="rules-close" aria-label="Закрыть правила">×</button>
       <h2>Как играть</h2>
       <p><b>Смысл игры.</b> Всё, что прожито в нашем сознании, для нас как будто уже было. Ты формулируешь запрос — то, чего хочешь, — и проходишь путь к нему на поле сознания, проживая его. Чтобы потом реализовать в жизни.</p>
       <p><b>Поле.</b> Шестиугольное поле сознания. В центре — Око: символ осознания, конец игры. По углам — четыре стихии (Огонь, Вода, Земля, Воздух) и две точки выхода из игры.</p>
@@ -513,13 +564,14 @@
 
   function renderDiary() {
     const games = store.games.slice().sort((a, b) => b.updatedAt - a.updatedAt);
-    return renderTopbar(activeGame()) + `<main class="narrow">
-      <section class="panel-card">
-        <h2>Мой дневник</h2>
-        <p class="note">Игры сохраняются в этом браузере на этом устройстве. Чтобы перенести их на другое устройство, скачай резервную копию и загрузи её там.</p>
-        ${games.length ? `<div class="list">${games.map(g => `<div class="row"><div class="row-main"><b>${esc(g.request.text || 'Запрос не сформулирован')}</b><span>${esc(fmtDate(g.updatedAt))} · ${esc(statusText(g))}${g.element ? ' · ' + esc(D.ELEMENTS[g.element].name) : ''} · шагов: ${g.journal.filter(j => j.t === 'card').length}</span></div><div class="row-actions">${ui.confirmDelete === g.id ? `<span class="note">Удалить эту игру?</span><button class="btn small danger" data-act="delete-yes" data-id="${g.id}">Да, удалить</button><button class="btn small ghost" data-act="delete-no">Нет</button>` : `<button class="btn small" data-act="open" data-id="${g.id}">${g.phase === 'finished' || g.phase === 'exited' ? 'Открыть' : 'Продолжить'}</button><button class="btn small ghost" data-act="sheet" data-id="${g.id}">Маршрут</button><button class="btn small ghost danger" data-act="delete" data-id="${g.id}">Удалить</button>`}</div></div>`).join('')}</div>` : '<p>Пока нет ни одной игры.</p>'}
+    return renderTopbar(activeGame()) + `<main class="narrow diary-view">
+      <section class="panel-card diary">
+        <p class="eyebrow">ЛИЧНОЕ ПРОСТРАНСТВО</p><h1>Мой дневник</h1>
+        <p class="lead">Каждый путь оставляет что-то важное.</p><p class="note">Возвращайся к своим открытиям или продолжи с того места, где остановился.</p>
+        ${games.length ? `<div class="list">${games.map((g,i) => `<div class="row"><span class="diary-number">${pad2(games.length-i)}</span><div class="row-main"><b>${esc(g.request.text || 'Запрос не сформулирован')}</b><span>${esc(fmtDate(g.updatedAt))} · ${esc(statusText(g))}${g.element ? ' · ' + esc(D.ELEMENTS[g.element].name) : ''} · шагов: ${g.journal.filter(j => j.t === 'card').length}</span></div><div class="row-actions">${ui.confirmDelete === g.id ? `<span class="note">Удалить эту игру?</span><button class="btn small danger" data-act="delete-yes" data-id="${g.id}">Да, удалить</button><button class="btn small ghost" data-act="delete-no">Нет</button>` : `<button class="btn small" data-act="open" data-id="${g.id}">${g.phase === 'finished' || g.phase === 'exited' ? 'Открыть' : 'Продолжить'}</button><button class="btn small ghost" data-act="sheet" data-id="${g.id}">Маршрут</button><button class="btn small ghost danger" data-act="delete" data-id="${g.id}">Удалить</button>`}</div></div>`).join('')}</div>` : `<div class="diary-empty">${icon('book')}<h2>Здесь начнётся твоя история</h2><p>Сделай первый шаг. Карты, мысли и открытия<br>соберутся в твой личный маршрут.</p></div>`}
         <div class="actions"><button class="btn primary" data-act="new">Начать новую игру</button><button class="btn ghost" data-act="export">Скачать резервную копию</button><label class="btn ghost file">Загрузить копию<input type="file" id="import" accept="application/json,.json"></label></div>
-      </section></main>`;
+        <p class="storage-note">${icon('lock')} Дневник хранится на этом устройстве. Скачай копию, чтобы перенести его или сохранить отдельно.</p>
+      </section></main>${footer()}`;
   }
 
   /* ---------------- экспорт ---------------- */
@@ -649,7 +701,16 @@
       reader.readAsText(f);
     }
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && ui.rules) { ui.rules = false; render(); } });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && ui.rules) { ui.rules = false; render(); return; }
+    if (e.key !== 'Tab') return;
+    const dialog = [...app.querySelectorAll('.modal-back')].pop();
+    if (!dialog) return;
+    const focusable = [...dialog.querySelectorAll('button, textarea, input, a[href]')].filter(el => !el.disabled);
+    const first = focusable[0], last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
 
   render();
 })();
